@@ -9,6 +9,7 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 heroes = {
     1: {
+        "id": 1,
         "name": "Odysseus",
         "aliases": [
             "Ulysses",
@@ -25,7 +26,7 @@ heroes = {
         "description": "Odysseus is the legendary king of Ithaca and a central hero of Homer's Odyssey. Known for his intelligence, cunning, and resourcefulness, he played a key role in the Trojan War and endured a long journey home, facing monsters, gods, and numerous challenges before reuniting with his wife Penelope and son Telemachus."
     }
 }
-next_id = 1
+next_id = 2
 
 # ------------------------------------------------------------
 

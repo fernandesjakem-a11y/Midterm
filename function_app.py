@@ -7,7 +7,24 @@ from functools import wraps
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
-heroes = {}
+heroes = {
+    1: {
+        "name": "Odysseus",
+        "aliases": [
+            "Ulysses",
+            "King of Ithaca",
+            "Son of Laertes"
+        ],
+        "status": "Mythical",
+        "culture": "Ancient Greek",
+        "sources": [
+            "The Iliad by Homer",
+            "The Odyssey by Homer"
+        ],
+        "historical_period": "Greek Mythological Heroic Age",
+        "description": "Odysseus is the legendary king of Ithaca and a central hero of Homer's Odyssey. Known for his intelligence, cunning, and resourcefulness, he played a key role in the Trojan War and endured a long journey home, facing monsters, gods, and numerous challenges before reuniting with his wife Penelope and son Telemachus."
+    }
+}
 next_id = 1
 
 # ------------------------------------------------------------
@@ -35,12 +52,6 @@ def validate_api_key():
             expected_key = get_api_key()
             provided_key = req.headers.get("X-API-Key")
 
-            if not expected_key:
-                logging.error("HEROES_API_KEY is not configured.")
-                return error_response(
-                    "Server authentication is not configured.", 500
-                )
-
             if not provided_key or not hmac.compare_digest(provided_key, expected_key):
                 return error_response("Unauthorized.", 401)
 
@@ -49,7 +60,7 @@ def validate_api_key():
         return wrapper
     return decorator
 
-def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=False, needs_hero_id=False):
+def handle_exceptions(required_fields=None, needs_json=False, needs_existing_hero=False, needs_hero_id=False):
     def decorator(handler):
         @wraps(handler)
         def wrapper(req: func.HttpRequest, *args, **kwargs):
@@ -60,7 +71,6 @@ def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=Fa
                         body = req.get_json()
                     except (ValueError, TypeError):
                         raise APIError("Invalid JSON request body.", 400)
-
                     if not isinstance(body, dict):
                         raise APIError("Request body must be a JSON object.", 400)
 
@@ -76,7 +86,7 @@ def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=Fa
                                 "Missing required fields: " + ", ".join(missing),
                                 400
                             )
-
+                        
                     req.validated_body = body
 
                 # Validate hero ID and existence when required.
@@ -84,7 +94,6 @@ def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=Fa
 
                 if needs_hero_id and not raw_id:
                     raise APIError("Missing hero ID.", 400)
-
                 if needs_existing_hero and raw_id:
                     try:
                         hero_id = int(raw_id)
@@ -95,7 +104,6 @@ def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=Fa
                         raise APIError("Hero not found.", 404)
 
                     req.validated_hero_id = hero_id
-
                 return handler(req, *args, **kwargs)
 
             except APIError as exc:
@@ -112,7 +120,7 @@ def handle_errors(required_fields=None, needs_json=False, needs_existing_hero=Fa
 
 @app.route(route="heroes", methods=["POST"])
 @validate_api_key()
-@handle_errors(
+@handle_exceptions(
     required_fields=[
         "name",
         "aliases",
@@ -149,7 +157,7 @@ def create_hero(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="heroes", methods=["GET"])
 @validate_api_key()
-@handle_errors(needs_existing_hero=True)
+@handle_exceptions(needs_existing_hero=True)
 def get_hero(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('GET request received for heroes.')
 
@@ -170,7 +178,7 @@ def get_hero(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="heroes", methods=["PUT"])
 @validate_api_key()
-@handle_errors(
+@handle_exceptions(
     needs_existing_hero=True,
     required_fields=[
         "name",
@@ -207,7 +215,7 @@ def update_hero(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="heroes", methods=["DELETE"])
 @validate_api_key()
-@handle_errors(needs_existing_hero=True, needs_hero_id=True)
+@handle_exceptions(needs_existing_hero=True, needs_hero_id=True)
 def delete_hero(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('DELETE request received for heroes.')
 
@@ -223,7 +231,7 @@ def delete_hero(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="heroes/purge", methods=["DELETE"])
 @validate_api_key()
-@handle_errors()
+@handle_exceptions()
 def purge_heroes(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('PURGE request received for heroes.')
 
@@ -237,7 +245,7 @@ def purge_heroes(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="heroes/counts", methods=["GET"])
 @validate_api_key()
-@handle_errors()
+@handle_exceptions()
 def count_heroes(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('COUNTS request received for heroes.')
 

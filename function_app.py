@@ -32,9 +32,9 @@ next_id = 2
 
 def error_response(message: str, status_code: int) -> func.HttpResponse:
     return func.HttpResponse(
-        message,
+        json.dumps({"error": message}),
         status_code=status_code,
-        mimetype="text/plain"
+        mimetype="application/json"
     )
 
 class APIError(Exception):
@@ -52,6 +52,12 @@ def validate_api_key():
         def wrapper(req: func.HttpRequest, *args, **kwargs):
             expected_key = get_api_key()
             provided_key = req.headers.get("X-API-Key")
+
+            if not expected_key:
+                return error_response(
+                    "Server authentication is not configured.",
+                    500
+                )
 
             if not provided_key or not hmac.compare_digest(provided_key, expected_key):
                 return error_response("Unauthorized.", 401)
@@ -225,9 +231,9 @@ def delete_hero(req: func.HttpRequest) -> func.HttpResponse:
     del heroes[hero_id]
 
     return func.HttpResponse(
-        f"Hero '{hero['name']}' deleted successfully.",
+        json.dumps({"message": f"Hero '{hero['name']}' deleted successfully."}),
         status_code=200,
-        mimetype="text/plain"
+        mimetype="application/json"
     )
 
 @app.route(route="heroes/purge", methods=["DELETE"])
@@ -239,9 +245,11 @@ def purge_heroes(req: func.HttpRequest) -> func.HttpResponse:
     heroes.clear()
 
     return func.HttpResponse(
-        "All heroes have been purged successfully.",
+        json.dumps({
+            "message": "All heroes have been purged successfully."
+        }),
         status_code=200,
-        mimetype="text/plain"
+        mimetype="application/json"
     )
 
 @app.route(route="heroes/counts", methods=["GET"])

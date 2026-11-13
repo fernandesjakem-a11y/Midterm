@@ -4,4 +4,4 @@
 
 azure-functions
 azure-identity
-pyodbc
+mssql-python

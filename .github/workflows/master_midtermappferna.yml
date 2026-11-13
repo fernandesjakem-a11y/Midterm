@@ -34,19 +34,8 @@ jobs:
           python -m venv venv
           source venv/bin/activate
 
-      - name: Verify packaged dependencies
-        run: |
-          echo "Checking dependency directory..."
-          test -d .python_packages/lib/site-packages
-
-          echo "Checking pyodbc files..."
-          find .python_packages/lib/site-packages -maxdepth 2 -iname "*pyodbc*"
-
-          echo "Checking azure-functions..."
-          find .python_packages/lib/site-packages -maxdepth 2 -iname "*azure_functions*"
-
-          echo "Checking azure-identity..."
-          find .python_packages/lib/site-packages -maxdepth 2 -iname "*azure/identity*"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       # Optional: Add step to run tests here
 

@@ -34,10 +34,14 @@ jobs:
           python -m venv venv
           source venv/bin/activate
 
-      - name: Install dependencies
+      - name: Verify packaged dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+          echo "Checking pyodbc installation..."
+          python -m pip show pyodbc
+          echo "Checking deployment directory..."
+          ls -la .python_packages/lib/site-packages/
+          echo "Checking pyodbc files..."
+          find .python_packages/lib/site-packages -iname "*pyodbc*"
 
       # Optional: Add step to run tests here
 

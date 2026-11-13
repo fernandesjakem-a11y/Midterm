@@ -36,12 +36,17 @@ jobs:
 
       - name: Verify packaged dependencies
         run: |
-          echo "Checking pyodbc installation..."
-          python -m pip show pyodbc
-          echo "Checking deployment directory..."
-          ls -la .python_packages/lib/site-packages/
+          echo "Checking dependency directory..."
+          test -d .python_packages/lib/site-packages
+
           echo "Checking pyodbc files..."
-          find .python_packages/lib/site-packages -iname "*pyodbc*"
+          find .python_packages/lib/site-packages -maxdepth 2 -iname "*pyodbc*"
+
+          echo "Checking azure-functions..."
+          find .python_packages/lib/site-packages -maxdepth 2 -iname "*azure_functions*"
+
+          echo "Checking azure-identity..."
+          find .python_packages/lib/site-packages -maxdepth 2 -iname "*azure/identity*"
 
       # Optional: Add step to run tests here
 

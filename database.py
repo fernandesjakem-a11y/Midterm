@@ -1,3 +1,4 @@
+
 import os
 import mssql_python
 
@@ -6,10 +7,17 @@ DATABASE = "heroes-api-db-3482538"
 
 def get_connection():
 
+    # Use Managed Identity in Azure.
+    # Use your personal Azure login locally.
+    authentication = os.getenv(
+        "DB_AUTHENTICATION",
+        "ActiveDirectoryDefault"
+    )
+
     connection_string = (
         f"Server={SERVER};"
         f"Database={DATABASE};"
-        "Authentication=ActiveDirectoryDefault;"
+        f"Authentication={authentication};"
         "Encrypt=yes;"
         "TrustServerCertificate=no;"
     )

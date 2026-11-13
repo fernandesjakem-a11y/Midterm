@@ -4,6 +4,16 @@ import json
 import os
 import hmac
 from functools import wraps
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+
+# Create one Key Vault client for the application.
+credential = DefaultAzureCredential()
+
+secret_client = SecretClient(
+    vault_url="https://kv-midterm-ferna.vault.azure.net/",
+    credential=credential
+)
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -32,7 +42,8 @@ class APIError(Exception):
         self.status = status
 
 def get_api_key():
-    return os.getenv("HEROES_API_KEY")
+    secret = secret_client.get_secret("HEROES-API-KEY")
+    return secret.value
 
 def handle_function(
     needs_json=False,

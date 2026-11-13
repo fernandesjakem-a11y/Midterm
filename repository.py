@@ -1,4 +1,3 @@
-import pyodbc
 from database import get_connection
 
 # ------------------------------------------------------------

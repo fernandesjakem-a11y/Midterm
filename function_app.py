@@ -230,3 +230,12 @@ def count_heroes(req: func.HttpRequest):
     return response({
         "count": repository.count_heroes()
     })
+
+# ------------------------------------------------------------
+# PATCH - Validate all heroes
+# ------------------------------------------------------------
+
+@app.route(route="heroes/validate", methods=["PATCH"])
+@handle_function()
+def validate_heroes(req: func.HttpRequest):
+    return response(repository.validate_heroes())

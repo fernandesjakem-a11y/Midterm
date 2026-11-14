@@ -1,24 +1,23 @@
+from datetime import datetime, timezone
 from database import get_connection
 
 # ------------------------------------------------------------
-# Helper functions
+# HELPER - Find or create a source
 # ------------------------------------------------------------
 
 def _get_or_create_source(cursor, title):
     """
-    Find an existing source or create a new one.
+    Reuse an existing source or insert a new one.
     Returns the source ID.
     """
 
-    # Lock the matching key range to avoid duplicate inserts
-    # when multiple requests attempt to create the same source.
     cursor.execute(
         """
         SELECT source_id
         FROM dbo.Sources WITH (UPDLOCK, HOLDLOCK)
-        WHERE title = ?
+        WHERE title = %(title)s
         """,
-        title
+        {"title": title}
     )
 
     row = cursor.fetchone()
@@ -30,30 +29,38 @@ def _get_or_create_source(cursor, title):
         """
         INSERT INTO dbo.Sources (title)
         OUTPUT INSERTED.source_id
-        VALUES (?)
+        VALUES (%(title)s)
         """,
-        title
+        {"title": title}
     )
 
     return cursor.fetchone()[0]
 
+# ------------------------------------------------------------
+# HELPER - Insert aliases
+# ------------------------------------------------------------
 
 def _add_aliases(cursor, hero_id, aliases):
-    """Insert aliases associated with a hero."""
+    """Insert aliases belonging to a hero."""
 
     for alias in aliases:
         cursor.execute(
             """
             INSERT INTO dbo.HeroAliases (hero_id, alias)
-            VALUES (?, ?)
+            VALUES (%(hero_id)s, %(alias)s)
             """,
-            hero_id,
-            alias
+            {
+                "hero_id": hero_id,
+                "alias": alias
+            }
         )
 
+# ------------------------------------------------------------
+# HELPER - Insert source relationships
+# ------------------------------------------------------------
 
 def _add_sources(cursor, hero_id, sources):
-    """Associate a hero with existing or newly created sources."""
+    """Associate a hero with its literary sources."""
 
     for source in sources:
         source_id = _get_or_create_source(cursor, source)
@@ -61,24 +68,35 @@ def _add_sources(cursor, hero_id, sources):
         cursor.execute(
             """
             INSERT INTO dbo.HeroSources (hero_id, source_id)
-            VALUES (?, ?)
+            VALUES (%(hero_id)s, %(source_id)s)
             """,
-            hero_id,
-            source_id
+            {
+                "hero_id": hero_id,
+                "source_id": source_id
+            }
         )
 
+# ------------------------------------------------------------
+# HELPER - Retrieve one complete hero
+# ------------------------------------------------------------
 
 def _get_hero(cursor, hero_id):
-    """Retrieve a hero and its associated aliases and sources."""
+    """Retrieve a hero, including aliases and sources."""
 
     cursor.execute(
         """
-        SELECT id, name, status, culture,
-               historical_period, description
+        SELECT
+            id,
+            name,
+            status,
+            culture,
+            historical_period,
+            description,
+            needs_review
         FROM dbo.Heroes
-        WHERE id = ?
+        WHERE id = %(id)s
         """,
-        hero_id
+        {"id": hero_id}
     )
 
     row = cursor.fetchone()
@@ -93,38 +111,40 @@ def _get_hero(cursor, hero_id):
         "culture": row[3],
         "historical_period": row[4],
         "description": row[5],
+        "needs_review": bool(row[6]),
         "aliases": [],
         "sources": []
     }
 
-    # Retrieve the hero's aliases.
+    # Retrieve aliases.
     cursor.execute(
         """
         SELECT alias
         FROM dbo.HeroAliases
-        WHERE hero_id = ?
+        WHERE hero_id = %(id)s
+        ORDER BY alias_id
         """,
-        hero_id
+        {"id": hero_id}
     )
 
-    hero["aliases"] = [row[0] for row in cursor.fetchall()]
+    hero["aliases"] = [r[0] for r in cursor.fetchall()]
 
-    # Retrieve the hero's associated sources.
+    # Retrieve sources.
     cursor.execute(
         """
         SELECT s.title
         FROM dbo.HeroSources hs
-        JOIN dbo.Sources s
+        INNER JOIN dbo.Sources s
             ON hs.source_id = s.source_id
-        WHERE hs.hero_id = ?
+        WHERE hs.hero_id = %(id)s
+        ORDER BY s.source_id
         """,
-        hero_id
+        {"id": hero_id}
     )
 
-    hero["sources"] = [row[0] for row in cursor.fetchall()]
+    hero["sources"] = [r[0] for r in cursor.fetchall()]
 
     return hero
-
 
 # ------------------------------------------------------------
 # CREATE - Add a new hero
@@ -136,30 +156,40 @@ def create_hero(data):
     try:
         cursor = connection.cursor()
 
-        # Insert the main hero record.
         cursor.execute(
             """
             INSERT INTO dbo.Heroes (
-                name, status, culture,
-                historical_period, description
+                name,
+                status,
+                culture,
+                historical_period,
+                description
             )
             OUTPUT INSERTED.id
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (
+                %(name)s,
+                %(status)s,
+                %(culture)s,
+                %(historical_period)s,
+                %(description)s
+            )
             """,
-            data["name"],
-            data["status"],
-            data["culture"],
-            data["historical_period"],
-            data["description"]
+            {
+                "name": data["name"],
+                "status": data["status"],
+                "culture": data["culture"],
+                "historical_period": data["historical_period"],
+                "description": data["description"]
+            }
         )
 
         hero_id = cursor.fetchone()[0]
 
-        # Insert the hero's aliases and source relationships.
+        # Insert aliases and sources.
         _add_aliases(cursor, hero_id, data["aliases"])
         _add_sources(cursor, hero_id, data["sources"])
 
-        # Commit all changes together.
+        # Save all changes together.
         connection.commit()
 
         return _get_hero(cursor, hero_id)
@@ -170,7 +200,6 @@ def create_hero(data):
 
     finally:
         connection.close()
-
 
 # ------------------------------------------------------------
 # READ - Retrieve all heroes
@@ -184,8 +213,14 @@ def get_all_heroes():
 
         cursor.execute(
             """
-            SELECT id, name, status, culture,
-                   historical_period, description
+            SELECT
+                id,
+                name,
+                status,
+                culture,
+                historical_period,
+                description,
+                needs_review
             FROM dbo.Heroes
             ORDER BY id
             """
@@ -201,11 +236,12 @@ def get_all_heroes():
                 "culture": row[3],
                 "historical_period": row[4],
                 "description": row[5],
+                "needs_review": bool(row[6]),
                 "aliases": [],
                 "sources": []
             }
 
-        # Retrieve all aliases in one query.
+        # Retrieve all aliases.
         cursor.execute(
             """
             SELECT hero_id, alias
@@ -218,12 +254,12 @@ def get_all_heroes():
             if hero_id in heroes:
                 heroes[hero_id]["aliases"].append(alias)
 
-        # Retrieve all source relationships in one query.
+        # Retrieve all source relationships.
         cursor.execute(
             """
             SELECT hs.hero_id, s.title
             FROM dbo.HeroSources hs
-            JOIN dbo.Sources s
+            INNER JOIN dbo.Sources s
                 ON hs.source_id = s.source_id
             ORDER BY hs.hero_id, s.source_id
             """
@@ -237,7 +273,6 @@ def get_all_heroes():
 
     finally:
         connection.close()
-
 
 # ------------------------------------------------------------
 # READ - Retrieve one hero
@@ -253,7 +288,6 @@ def get_hero(hero_id):
     finally:
         connection.close()
 
-
 # ------------------------------------------------------------
 # UPDATE - Update an existing hero
 # ------------------------------------------------------------
@@ -264,41 +298,49 @@ def update_hero(hero_id, data):
     try:
         cursor = connection.cursor()
 
-        # Update the main hero information.
         cursor.execute(
             """
             UPDATE dbo.Heroes
-            SET name = ?,
-                status = ?,
-                culture = ?,
-                historical_period = ?,
-                description = ?
-            WHERE id = ?
+            SET
+                name = %(name)s,
+                status = %(status)s,
+                culture = %(culture)s,
+                historical_period = %(historical_period)s,
+                description = %(description)s
+            WHERE id = %(id)s
             """,
-            data["name"],
-            data["status"],
-            data["culture"],
-            data["historical_period"],
-            data["description"],
-            hero_id
+            {
+                "name": data["name"],
+                "status": data["status"],
+                "culture": data["culture"],
+                "historical_period": data["historical_period"],
+                "description": data["description"],
+                "id": hero_id
+            }
         )
 
         if cursor.rowcount == 0:
             connection.rollback()
             return None
 
-        # Replace the existing aliases.
+        # Replace existing aliases.
         cursor.execute(
-            "DELETE FROM dbo.HeroAliases WHERE hero_id = ?",
-            hero_id
+            """
+            DELETE FROM dbo.HeroAliases
+            WHERE hero_id = %(id)s
+            """,
+            {"id": hero_id}
         )
 
         _add_aliases(cursor, hero_id, data["aliases"])
 
-        # Replace the existing source relationships.
+        # Replace existing source relationships.
         cursor.execute(
-            "DELETE FROM dbo.HeroSources WHERE hero_id = ?",
-            hero_id
+            """
+            DELETE FROM dbo.HeroSources
+            WHERE hero_id = %(id)s
+            """,
+            {"id": hero_id}
         )
 
         _add_sources(cursor, hero_id, data["sources"])
@@ -314,7 +356,6 @@ def update_hero(hero_id, data):
     finally:
         connection.close()
 
-
 # ------------------------------------------------------------
 # DELETE - Delete one hero
 # ------------------------------------------------------------
@@ -326,24 +367,24 @@ def delete_hero(hero_id):
         cursor = connection.cursor()
 
         cursor.execute(
-            "SELECT name FROM dbo.Heroes WHERE id = ?",
-            hero_id
+            """
+            DELETE FROM dbo.Heroes
+            OUTPUT DELETED.name
+            WHERE id = %(id)s
+            """,
+            {"id": hero_id}
         )
 
         row = cursor.fetchone()
 
         if not row:
+            connection.rollback()
             return None
 
         hero_name = row[0]
 
-        # Associated aliases and relationships are deleted
-        # automatically through ON DELETE CASCADE.
-        cursor.execute(
-            "DELETE FROM dbo.Heroes WHERE id = ?",
-            hero_id
-        )
-
+        # Foreign key cascades remove associated aliases
+        # and hero-source relationships.
         connection.commit()
 
         return hero_name
@@ -355,7 +396,6 @@ def delete_hero(hero_id):
     finally:
         connection.close()
 
-
 # ------------------------------------------------------------
 # PURGE - Delete all heroes
 # ------------------------------------------------------------
@@ -366,18 +406,19 @@ def purge_heroes():
     try:
         cursor = connection.cursor()
 
-        cursor.execute("SELECT COUNT(*) FROM dbo.Heroes")
+        cursor.execute(
+            "SELECT COUNT(*) FROM dbo.Heroes"
+        )
+
         total = cursor.fetchone()[0]
 
-        if total == 0:
-            return 0
-
-        # Cascading deletes remove aliases and relationships.
+        # Delete the entire hero collection.
+        # Cascading deletes remove associated records.
         cursor.execute("DELETE FROM dbo.Heroes")
 
         connection.commit()
 
-        # Identity values are intentionally not reset.
+        # Identity values are not reset.
         return total
 
     except Exception:
@@ -387,9 +428,8 @@ def purge_heroes():
     finally:
         connection.close()
 
-
 # ------------------------------------------------------------
-# COUNT - Count all heroes
+# COUNTS - Count all heroes
 # ------------------------------------------------------------
 
 def count_heroes():
@@ -398,9 +438,84 @@ def count_heroes():
     try:
         cursor = connection.cursor()
 
-        cursor.execute("SELECT COUNT(*) FROM dbo.Heroes")
+        cursor.execute(
+            "SELECT COUNT(*) FROM dbo.Heroes"
+        )
 
         return cursor.fetchone()[0]
+
+    finally:
+        connection.close()
+
+# ------------------------------------------------------------
+# VALIDATE - Check all heroes for missing sources
+# ------------------------------------------------------------
+
+def validate_heroes():
+    """
+    Check every hero's source relationships.
+
+    Heroes without sources: needs_review = 1
+    Heroes with sources: needs_review = 0
+
+    Only records requiring a change are updated.
+    """
+
+    connection = get_connection()
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            UPDATE h
+            SET needs_review = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.HeroSources hs
+                    WHERE hs.hero_id = h.id
+                ) THEN 0
+                ELSE 1
+            END
+            OUTPUT INSERTED.id
+            FROM dbo.Heroes h
+            WHERE
+                (
+                    h.needs_review = 0
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM dbo.HeroSources hs
+                        WHERE hs.hero_id = h.id
+                    )
+                )
+                OR
+                (
+                    h.needs_review = 1
+                    AND EXISTS (
+                        SELECT 1
+                        FROM dbo.HeroSources hs
+                        WHERE hs.hero_id = h.id
+                    )
+                )
+        """)
+
+        # Count the IDs returned by the UPDATE.
+        updated_count = len(cursor.fetchall())
+
+        # Persist the changes.
+        connection.commit()
+
+        timestamp = datetime.now(
+            timezone.utc
+        ).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+        return {
+            "updatedCount": updated_count,
+            "timestamp": timestamp
+        }
+
+    except Exception:
+        connection.rollback()
+        raise
 
     finally:
         connection.close()
